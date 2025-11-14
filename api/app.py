@@ -2,15 +2,21 @@ from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from forms import LoginForm, RegisterForm
-from models import db, User
 from datetime import datetime, timedelta
 import os
 
-app = Flask(__name__)
-app.config['SECRET_KEY'] = 'tu-clave-secreta-muy-segura-cambiar-en-produccion'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///usuarios.db'
+# Crear la app Flask con rutas absolutas
+app = Flask(__name__, 
+            template_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates'),
+            static_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static'))
+
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'tu-clave-secreta-muy-segura-cambiar-en-produccion')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:////tmp/usuarios.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Importar modelos y forms después de crear app
+from .models import db, User
+from .forms import LoginForm, RegisterForm
 
 # Inicializar extensiones
 db.init_app(app)
@@ -27,21 +33,8 @@ def load_user(user_id):
 with app.app_context():
     db.create_all()
 
-# Decorador para rutas que requieren suscripción activa
-def suscripcion_activa_required(func):
-    @login_required
-    def decorated_view(*args, **kwargs):
-        # Comprueba si la suscripción está activa por fecha y flag
-        if (not current_user.is_subscribed or 
-            not current_user.subscription_end_date or 
-            current_user.subscription_end_date < datetime.utcnow()):
-            flash('Necesitas una suscripción activa para acceder a esta sección.', 'warning')
-            return redirect(url_for('dashboard'))
-        return func(*args, **kwargs)
-    decorated_view.__name__ = func.__name__
-    return decorated_view
-
 # Rutas
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -50,7 +43,6 @@ def index():
 def register():
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
-    
     form = RegisterForm()
     if form.validate_on_submit():
         existing_user = User.query.filter_by(email=form.email.data).first()
@@ -85,18 +77,15 @@ def login():
             flash('Email o contraseña incorrectos.', 'danger')
     return render_template('login.html', form=form)
 
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    flash('Has cerrado sesión exitosamente.', 'info')
-    return redirect(url_for('index'))
-
 @app.route('/dashboard')
 @login_required
 def dashboard():
     now = datetime.utcnow()
-    return render_template('dashboard.html', username=current_user.username, now=now)
+    return render_template('dashboard.html', 
+                         username=current_user.username, 
+                         is_subscribed=current_user.is_subscribed, 
+                         subscription_end_date=current_user.subscription_end_date, 
+                         now=now)
 
 @app.route('/suscribirse', methods=['POST'])
 @login_required
@@ -108,11 +97,9 @@ def suscribirse():
     flash('¡Gracias por suscribirte! Ahora tienes acceso completo durante 30 días.', 'success')
     return redirect(url_for('dashboard'))
 
-# Ruta ejemplo solo para usuarios suscritos activamente
-@app.route('/zona-premium')
-@suscripcion_activa_required
-def zona_premium():
-    return "<h2>Esto solo lo ve un usuario con suscripción activa.</h2>"
-
-if __name__ == '__main__':
-    app.run(debug=True)
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    flash('Has cerrado sesión exitosamente.', 'info')
+    return redirect(url_for('index'))
