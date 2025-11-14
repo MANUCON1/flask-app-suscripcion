@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="container mt-5">
+    <h1>Bienvenido, {{ username }}!</h1>
+    <p class="lead">Esta es tu área privada de la aplicación.</p>
+
+    {% if not current_user.is_subscribed or (current_user.subscription_end_date and current_user.subscription_end_date < now) %}
+        <div class="alert alert-warning" role="alert">
+            No tienes una suscripción activa. Por favor, suscríbete para acceder a todas las funciones.
+        </div>
+        <form action="{{ url_for('suscribirse') }}" method="post">
+            <button class="btn btn-success" type="submit">Suscribirse/Pagar</button>
+        </form>
+    {% else %}
+        <div class="alert alert-success">
+            Suscripción activa hasta: {{ current_user.subscription_end_date.strftime('%d/%m/%Y %H:%M') }}
+        </div>
+        <!-- Aquí el contenido premium de la app -->
+        <p>Contenido premium de tu aplicación para usuarios suscritos.</p>
+    {% endif %}
+</div>
+{% endblock %}
